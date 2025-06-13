@@ -2,8 +2,6 @@
 
 PSQL="psql --username=freecodecamp --dbname=number_guess -t --no-align -c"
 
-USER_GUESS=""
-
 MAIN() {
 
   RANDOM_NUMBER=$((RANDOM % 1000 + 1))
@@ -11,48 +9,55 @@ MAIN() {
   echo "Enter your username:"
   read USERNAME
 
-  USER_RESULT=$($PSQL "select name from users where name = '$USERNAME'")
+  USER_ID=$($PSQL "select id from users where name = '$USERNAME'")
 
-  if [[ -z $USER_RESULT ]]
+  if [[ $USER_ID ]]
   then
-    echo "Welcome, $USERNAME! It looks like this is your first time here."
+    #get games played
+    GAMES_PLAYED=$($PSQL "select count(user_id) from games where user_id = '$USER_ID'")
+
+    #get best game (guess)
+    BEST_GUESS=$($PSQL "select min(number_of_guesses) from games where user_id = '$USER_ID'")
+
+    echo -e "\nWelcome back, $USERNAME! You have played $GAMES_PLAYED games, and your best game took $BEST_GUESS guesses."
+
   else
-    echo "Welcome back, <username>! You have played <games_played> games, and your best game took <best_game> guesses."
+
+    echo "Welcome, $USERNAME! It looks like this is your first time here."
+
+    INSERT_USER=$($PSQL "insert into users (name) values ('$USERNAME')")
+
+    USER_ID=$($PSQL "select id from users where name = '$USERNAME'")
   fi
 
-  while [ ! $RANDOM_NUMBER -eq $USER_GUESS ]
-  do
-    GENNUMBER
+  TRIES=0
+  GUESSED=0
 
-    if [[ $RANDOM_NUMBER < $USER_GUESS ]]
-    then 
-      echo "It's lower than that, guess again:"
-    elif [[ $RANDOM_NUMBER > $USER_GUESS ]]
-    then
-      echo "It's higher than that, guess again:"
+  echo -e "\nGuess the secret number between 1 and 1000:"
+
+  while [[ $GUESSED = 0 ]]; do
+    read GUESS
+
+    #if not a number
+    if [[ ! $GUESS =~ ^[0-9]+$ ]]; then
+      echo -e "\nThat is not an integer, guess again:"
+    #if correct guess
+    elif [[ $RANDOM_NUMBER = $GUESS ]]; then
+      TRIES=$(($TRIES + 1))
+      echo -e "\nYou guessed it in $TRIES tries. The secret number was $RANDOM_NUMBER. Nice job!"
+      #insert into db
+      INSERTED_TO_GAMES=$($PSQL "insert into games(user_id, random_number, number_of_guesses) values($USER_ID, $RANDOM_NUMBER, $TRIES)")
+      GUESSED=1
+    #if greater
+    elif [[ $RANDOM_NUMBER -gt $GUESS ]]; then
+      TRIES=$(($TRIES + 1))
+      echo -e "\nIt's higher than that, guess again:"
+    #if smaller
+    else
+      TRIES=$(($TRIES + 1))
+      echo -e "\nIt's lower than that, guess again:"
     fi
   done
-
-  echo "You guessed it in <number_of_guesses> tries. The secret number was <secret_number>. Nice job!"
-  
-
-}
-
-GENNUMBER() {
-
-  if [[ ! -z $1 ]]
-  then
-    echo $1
-  fi
-
-  echo "Guess the secret number between 1 and 1000:"
-  read USER_GUESS
-
-  if [[ ! "$USER_GUESS" =~ ^[0-9]+$ ]] && ! (( USER_GUESS >= 1 && USER_GUESS <= 1000 ))
-  then
-    GENNUMBER "That is not an integer, guess again:"
-  fi
-
 }
 
 MAIN
