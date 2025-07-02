@@ -77,6 +77,9 @@ app.post("/api/users", async (req, res) => {
 		})
 	} catch (error) {
 		console.error(error);
+		res.json({
+			error: "error"
+		})
 	}
 });
 
@@ -96,11 +99,12 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
 
 	try {
 
-		const userFind = await UserExercise.findOne({_id: id});
+		const userFind = await UserExercise.findOne({ _id: id });
 
 		const username = userFind.username;
 
 		const saveExercise = new Exercise({
+			user_id: id,
 			date: new Date(req.body.date),
 			description: req.body.description,
 			duration: req.body.duration
@@ -118,18 +122,98 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
 
 	} catch (error) {
 		console.error(error);
+		res.json({
+			error: "error"
+		})
 	}
 
 });
 
-app.post("/api/users/:_id/logs", (req, res) => { // ?[from][&to][&limit]
+app.get("/api/users/:_id/logs", async (req, res) => {
+
+	// /api/users/:_id/logs?[from][&to][&limit]
 
 	const id = req.params._id;
-	const from = req.query.from;
-	const to = req.query.to;
-	const limit = req.query.limit;
 
 
+	try {
+
+		const userFind = await UserExercise.findOne({ _id: id });
+
+		if (userFind) {
+			const count = await Exercise.countDocuments({ user_id: id });
+
+			try {
+
+				const from = req.query.from;
+				const to = req.query.to;
+				const limit = req.query.limit;
+
+				console.log(`_id: ${id}, from: ${from}, to: ${to}, limit: ${limit}`);
+
+				// Build date filter
+				let dateFilter = {};
+				if (from) dateFilter.$gte = new Date(from);
+				if (to) dateFilter.$lte = new Date(to);
+
+				// Build base query
+				let query = Exercise.find({ user_id: id });
+
+				// Apply date filter if needed
+				if (from || to) {
+					query = query.where('date').gte(dateFilter.$gte).lte(dateFilter.$lte);
+				}
+
+				// Apply select
+				query = query.select({
+					'description': 1,
+					'duration': 1,
+					'date': 1,
+					'_id': 0
+				});
+
+				// Apply limit if needed
+				if (limit) {
+					query = query.limit(Number(limit));
+				}
+
+				// Execute query
+				let log = await query.exec();
+
+				log = log.map((el) => {
+					return {
+						description: el.description,
+						duration: el.duration,
+						date: el.date.toDateString()
+					}
+				})
+
+				res.json({
+					_id: id,
+					username: userFind.username,
+					count: count,
+					log: log
+				})
+
+			} catch (error) {
+				console.error(error);
+				res.json({
+					error: "error"
+				})
+			}
+
+		} else {
+			res.json({
+				error: "invalid user"
+			})
+		}
+
+	} catch (error) {
+		console.error(error);
+		res.json({
+			error: "error"
+		})
+	}
 
 });
 
