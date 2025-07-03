@@ -64,22 +64,39 @@ let Exercise = new mongoose.model("Exercise", exerciseSchema);
 
 app.post("/api/users", async (req, res) => {
 	const username = req.body.username;
-
 	const saveData = {
 		username: username
 	};
 
 	try {
 		const data = await new UserExercise(saveData).save();
+
 		res.json({
 			"_id": data._id,
 			"username": data.username
 		})
+
 	} catch (error) {
+
 		console.error(error);
 		res.json({
 			error: "error"
 		})
+	}
+}).get("/api/users", async (req, res) => {
+	try {
+
+		const data = await UserExercise.find();
+
+		res.json(data)
+
+	} catch (error) {
+
+		console.error(error);
+		res.json({
+			error: "error"
+		})
+
 	}
 });
 
@@ -105,20 +122,22 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
 
 		const saveExercise = new Exercise({
 			user_id: id,
-			date: new Date(req.body.date),
+			date: req.body.date ? new Date(req.body.date.split('-')[0], req.body.date.split('-')[1], req.body.date.split('-')[2]) : null,
 			description: req.body.description,
 			duration: req.body.duration
 		});
 
 		const data = await saveExercise.save();
 
-		res.json({
-			_id: id,
-			username: userFind.username,
-			date: data.date.toDateString(),
-			description: data.description,
-			duration: data.duration
-		});
+		res.json(
+			{
+				_id: id,
+				username: userFind.username,
+				date: data.date ? data.date.toDateString() : null,
+				description: data.description,
+				duration: data.duration
+			}
+		);
 
 	} catch (error) {
 		console.error(error);
@@ -141,7 +160,6 @@ app.get("/api/users/:_id/logs", async (req, res) => {
 		const userFind = await UserExercise.findOne({ _id: id });
 
 		if (userFind) {
-			const count = await Exercise.countDocuments({ user_id: id });
 
 			try {
 
@@ -153,24 +171,33 @@ app.get("/api/users/:_id/logs", async (req, res) => {
 
 				// Build date filter
 				let dateFilter = {};
-				if (from) dateFilter.$gte = new Date(from);
-				if (to) dateFilter.$lte = new Date(to);
 
 				// Build base query
 				let query = Exercise.find({ user_id: id });
 
 				// Apply date filter if needed
 				if (from || to) {
-					query = query.where('date').gte(dateFilter.$gte).lte(dateFilter.$lte);
+					query = query.where('date');
 				}
 
-				// Apply select
-				query = query.select({
-					'description': 1,
-					'duration': 1,
-					'date': 1,
-					'_id': 0
-				});
+				if (from) {
+					dateFilter.$gte = new Date(from);
+					query = query.gte(dateFilter.$gte);
+				}
+
+				if (to) {
+					dateFilter.$lte = new Date(to)
+					query = query.lte(dateFilter.$lte);
+				}
+
+				query = query.select(
+					{
+						'description': 1,
+						'duration': 1,
+						'date': 1,
+						'_id': 0
+					}
+				);
 
 				// Apply limit if needed
 				if (limit) {
@@ -184,9 +211,11 @@ app.get("/api/users/:_id/logs", async (req, res) => {
 					return {
 						description: el.description,
 						duration: el.duration,
-						date: el.date.toDateString()
+						date: el.date ? el.date.toDateString() : null
 					}
 				})
+
+				const count = log.length
 
 				res.json({
 					_id: id,
@@ -220,3 +249,40 @@ app.get("/api/users/:_id/logs", async (req, res) => {
 const listener = app.listen(process.env.PORT || 3000, () => {
 	console.log('Your app is listening on port ' + listener.address().port)
 })
+
+// running tests
+// 12. Each item in the log array that is returned from GET /api/users/:_id/logs is an object that should have a description, duration, and date properties.
+// 15. The date property of any object in the log array that is returned from GET /api/users/:_id/logs should be a string. Use the dateString format of the Date API.
+// tests completed
+
+// {
+//     "_id": "6865e2c1914ee5c98c819aa1",
+//     "username": "test3",
+//     "count": 1,
+//     "log": [
+//         {
+//             "description": "teste",
+//             "duration": 30,
+//             "date": "Wed Apr 30 2025"
+//         }
+//     ]
+// }
+
+
+// {
+// "_id": "68632ace509d2d00132fea1c",
+// "username": "teste",
+// "count": 2,
+// "log": [
+// {
+// "description": "testando 123",
+// "duration": 30,
+// "date": "Mon Jun 30 2025"
+// },
+// {
+// "description": "testando 123",
+// "duration": 30,
+// "date": "Mon Jun 30 2025"
+// }
+// ]
+// }
