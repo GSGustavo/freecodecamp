@@ -102,16 +102,6 @@ app.post("/api/users", async (req, res) => {
 
 app.post("/api/users/:_id/exercises", async (req, res) => {
 
-	// description, duration, date
-
-	// {
-	//     "_id": "68632ace509d2d00132fea1c",
-	//     "username": "teste",
-	//     "date": "Mon Jun 30 2025",
-	//     "duration": 30,
-	//     "description": "testando 123"
-	// }
-
 	const id = req.params._id;
 
 	try {
@@ -120,24 +110,35 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
 
 		const username = userFind.username;
 
-		const saveExercise = new Exercise({
+		const dateToSave = {
 			user_id: id,
-			date: req.body.date ? new Date(req.body.date.split('-')[0], req.body.date.split('-')[1], req.body.date.split('-')[2]) : null,
 			description: req.body.description,
-			duration: req.body.duration
-		});
+			duration: req.body.duration,
+			date: new Date()
+		}
+
+		if (req.body.date) {
+			dateToSave.date = new Date(req.body.date.split('-')[0], req.body.date.split('-')[1] - 1, req.body.date.split('-')[2])
+		}
+
+		const saveExercise = new Exercise(dateToSave);
 
 		const data = await saveExercise.save();
 
-		res.json(
-			{
-				_id: id,
-				username: userFind.username,
-				date: data.date ? data.date.toDateString() : null,
-				description: data.description,
-				duration: data.duration
-			}
-		);
+		const dataToReturn = {
+			_id: id,
+			username: username,
+			description: data.description,
+			duration: data.duration
+		}
+
+		if (data.date) {
+			dataToReturn.date = data.date.toDateString()
+		}
+
+		dataToReturn.date
+
+		res.json(dataToReturn);
 
 	} catch (error) {
 		console.error(error);
@@ -150,10 +151,7 @@ app.post("/api/users/:_id/exercises", async (req, res) => {
 
 app.get("/api/users/:_id/logs", async (req, res) => {
 
-	// /api/users/:_id/logs?[from][&to][&limit]
-
 	const id = req.params._id;
-
 
 	try {
 
@@ -162,67 +160,72 @@ app.get("/api/users/:_id/logs", async (req, res) => {
 		if (userFind) {
 
 			try {
-
 				const from = req.query.from;
 				const to = req.query.to;
 				const limit = req.query.limit;
 
-				console.log(`_id: ${id}, from: ${from}, to: ${to}, limit: ${limit}`);
-
-				// Build date filter
 				let dateFilter = {};
 
-				// Build base query
-				let query = Exercise.find({ user_id: id });
+				if (from) dateFilter.$gte = new Date(from.split('-')[0], from.split('-')[1] - 1, from.split('-')[2]);
+				if (to) dateFilter.$lte = new Date(to.split('-')[0], to.split('-')[1] - 1, to.split('-')[2]);
 
-				// Apply date filter if needed
-				if (from || to) {
-					query = query.where('date');
-				}
+				console.log(">>>>>>> _id: ", id);
+				console.log(">>>>>>> from: ", from);
+				console.log(">>>>>>> to: ", to);
+				console.log(">>>>>>> limit: ", limit);
+				console.log(">>>>>>> dateFilter: ", JSON.stringify(dateFilter));
 
-				if (from) {
-					dateFilter.$gte = new Date(from);
-					query = query.gte(dateFilter.$gte);
-				}
+				// Combine all filters
+				const mongoFilter = {
+					user_id: id,
+					...(from || to ? { date: dateFilter } : {})
+				};
 
-				if (to) {
-					dateFilter.$lte = new Date(to)
-					query = query.lte(dateFilter.$lte);
-				}
+				let query = Exercise.find(mongoFilter)
+					.select({
+						description: 1,
+						duration: 1,
+						date: 1,
+						_id: 0,
+					});
 
-				query = query.select(
-					{
-						'description': 1,
-						'duration': 1,
-						'date': 1,
-						'_id': 0
-					}
-				);
-
-				// Apply limit if needed
 				if (limit) {
-					query = query.limit(Number(limit));
+					query = query.limit(limit);
 				}
 
-				// Execute query
 				let log = await query.exec();
 
 				log = log.map((el) => {
-					return {
+					const logToReturn = {
 						description: el.description,
 						duration: el.duration,
-						date: el.date ? el.date.toDateString() : null
 					}
+
+					if (el.date) {
+						logToReturn.date = el.date.toDateString()
+					}
+
+					return logToReturn
 				})
 
 				const count = log.length
 
-				res.json({
+				const jsonToReturn = {
 					_id: id,
 					username: userFind.username,
 					count: count,
 					log: log
-				})
+				}
+
+				if (from) {
+					jsonToReturn.from = from.split('-')[0], from.split('-')[1], from.split('-')[2]
+				}
+
+				if (to) {
+					jsonToReturn.to = to.split('-')[0], to.split('-')[1], to.split('-')[2]
+				}
+
+				res.json(jsonToReturn)
 
 			} catch (error) {
 				console.error(error);
@@ -270,19 +273,19 @@ const listener = app.listen(process.env.PORT || 3000, () => {
 
 
 // {
-// "_id": "68632ace509d2d00132fea1c",
-// "username": "teste",
-// "count": 2,
-// "log": [
-// {
-// "description": "testando 123",
-// "duration": 30,
-// "date": "Mon Jun 30 2025"
-// },
-// {
-// "description": "testando 123",
-// "duration": 30,
-// "date": "Mon Jun 30 2025"
-// }
-// ]
+// 	"_id": "68632ace509d2d00132fea1c",
+// 	"username": "teste",
+// 	"count": 2,
+// 	"log": [
+// 			{
+// 				"description": "testando 123",
+// 				"duration": 30,
+// 				"date": "Mon Jun 30 2025"
+// 			},
+// 			{
+// 				"description": "testando 123",
+// 				"duration": 30,
+// 				"date": "Mon Jun 30 2025"
+// 			}
+// 	]
 // }
